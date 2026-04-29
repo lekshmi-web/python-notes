@@ -1,0 +1,210 @@
+<style>
+  :root {
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --bg-main: #f8fafc;
+    --card-bg: #ffffff;
+    --code-bg: #0f172a;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --success: #22c55e;
+    --border: #e2e8f0;
+  }
+
+  .flv-container {
+    padding: 28px;
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid var(--border);
+    max-width: 650px;
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text-main);
+    margin: 20px auto;
+  }
+
+  .flv-header h3 { margin: 0 0 20px 0; font-size: 20px; font-weight: 700; color: var(--primary); }
+
+  .flv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 24px; }
+  .flv-input-grp label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
+  .flv-input-grp input { 
+    width: 100%; border: 2px solid var(--border); border-radius: 8px; padding: 10px; 
+    font-family: 'JetBrains Mono', monospace; outline: none; transition: 0.2s;
+  }
+  .flv-input-grp input:focus { border-color: var(--primary); }
+
+  .flv-editor { 
+    background: var(--code-bg); color: #f8fafc; border-radius: 12px; padding: 20px; 
+    font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.7; margin-bottom: 20px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+  }
+  .hl-kw { color: #c678dd; } 
+  .hl-fn { color: #61afef; } 
+  .hl-val { color: #d19a66; } 
+  .flv-bubble { 
+    background: var(--success); color: white; padding: 2px 10px; border-radius: 20px; 
+    font-size: 12px; margin-left: 10px; font-weight: 600; animation: fadeIn 0.2s;
+  }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+
+  .flv-viz { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; min-height: 52px; }
+  .flv-node { 
+    width: 50px; height: 50px; border-radius: 10px; border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-weight: 700;
+    transition: all 0.2s; background: #f1f5f9; color: var(--text-muted);
+  }
+  .flv-node.active { border-color: var(--primary); background: #eef2ff; color: var(--primary); transform: scale(1.1); box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2); }
+  .flv-node.done { background: #f0fdf4; border-color: #bbf7d0; color: #16a34a; }
+
+  .flv-term { 
+    background: #1e293b; border-radius: 8px; padding: 15px; font-family: 'JetBrains Mono', monospace; 
+    font-size: 13px; color: #10b981; border: 1px solid #334155; height: 120px; overflow-y: auto;
+  }
+
+  .flv-actions { display: flex; gap: 10px; margin-top: 24px; }
+  .btn { 
+    flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer;
+    transition: 0.2s; font-size: 13px;
+  }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-outline { background: white; border: 2px solid var(--border); color: var(--text-main); }
+  .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+</style>
+
+<div class="flv-container">
+  <div class="flv-header"><h3>Python Loop Debugger</h3></div>
+  
+  <div class="flv-grid">
+    <div class="flv-input-grp"><label>Start</label><input type="number" id="fstart" value="0"></div>
+    <div class="flv-input-grp"><label>Stop</label><input type="number" id="fstop" value="5"></div>
+    <div class="flv-input-grp"><label>Step</label><input type="number" id="fstep" value="1"></div>
+  </div>
+
+  <div class="flv-editor">
+    <span class="hl-kw">for</span> i <span class="hl-kw">in</span> <span class="hl-fn">range</span>(<span class="hl-val" id="c-start">0</span>, <span class="hl-val" id="c-stop">5</span>, <span class="hl-val" id="c-step">1</span>):<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="hl-fn">print</span>(i) <span id="c-cur" style="display:none" class="flv-bubble">i = ?</span>
+  </div>
+
+  <div class="flv-viz" id="flv-boxes"></div>
+
+  <div class="flv-term" id="flv-log"># Waiting for start...</div>
+
+  <div class="flv-actions">
+    <button class="btn btn-primary" onclick="startLoop()" id="btn-start">Start</button>
+    <button class="btn btn-outline" onclick="nextStep()" id="btn-next" disabled>Step</button>
+    <button class="btn btn-outline" onclick="runAll()" id="btn-all" disabled>Auto-Run</button>
+    <button class="btn btn-outline" onclick="resetLoop()">Reset</button>
+  </div>
+</div>
+
+<script>
+  let values = [], idx = 0, running = false, timer = null;
+
+  function startLoop() {
+    const s = parseInt(document.getElementById('fstart').value) || 0;
+    const e = parseInt(document.getElementById('fstop').value) || 0;
+    const st = parseInt(document.getElementById('fstep').value) || 1;
+    
+    values = [];
+    if (st > 0) { for (let i = s; i < e; i += st) values.push(i); }
+    else if (st < 0) { for (let i = s; i > e; i += st) values.push(i); }
+
+    if (values.length === 0) {
+      document.getElementById('flv-log').innerHTML = '<span style="color:#ef4444">Error: Range generates no values.</span>';
+      return;
+    }
+
+    idx = 0;
+    running = true;
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-next').disabled = false;
+    document.getElementById('btn-all').disabled = false;
+    document.getElementById('flv-log').innerHTML = '>>> Initializing loop...';
+    
+    renderNodes();
+    updateUI();
+  }
+
+  function renderNodes() {
+    const container = document.getElementById('flv-boxes');
+    container.innerHTML = '';
+    values.forEach((v, i) => {
+      const node = document.createElement('div');
+      node.className = 'flv-node';
+      node.id = 'node-' + i;
+      node.innerText = v;
+      container.appendChild(node);
+    });
+  }
+
+  function updateUI() {
+    const log = document.getElementById('flv-log');
+    
+    // Update visual nodes
+    values.forEach((_, i) => {
+      const node = document.getElementById('node-' + i);
+      if (i < idx) node.className = 'flv-node done';
+      else if (i === idx) node.className = 'flv-node active';
+      else node.className = 'flv-node';
+    });
+
+    if (idx < values.length) {
+      const val = values[idx];
+      document.getElementById('c-cur').style.display = 'inline-block';
+      document.getElementById('c-cur').innerText = 'i = ' + val;
+      log.innerHTML += `<br> <span style="color:#94a3b8">out:</span> ${val}`;
+      log.scrollTop = log.scrollHeight; // Auto-scroll
+    } else {
+      finish();
+    }
+  }
+
+  function nextStep() {
+    if (!running) return;
+    idx++;
+    updateUI();
+  }
+
+  function runAll() {
+    document.getElementById('btn-all').disabled = true;
+    document.getElementById('btn-next').disabled = true;
+    timer = setInterval(() => {
+      if (idx >= values.length - 1) {
+        idx++;
+        updateUI();
+        clearInterval(timer);
+      } else {
+        idx++;
+        updateUI();
+      }
+    }, 500);
+  }
+
+  function finish() {
+    running = false;
+    document.getElementById('c-cur').style.display = 'none';
+    document.getElementById('flv-log').innerHTML += `<br><span style="color:#61afef">*** Loop Finished ***</span>`;
+    document.getElementById('btn-next').disabled = true;
+    document.getElementById('btn-all').disabled = true;
+    document.getElementById('flv-log').scrollTop = document.getElementById('flv-log').scrollHeight;
+  }
+
+  function resetLoop() {
+    clearInterval(timer);
+    running = false;
+    idx = 0;
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-next').disabled = true;
+    document.getElementById('btn-all').disabled = true;
+    document.getElementById('flv-boxes').innerHTML = '';
+    document.getElementById('flv-log').innerHTML = '# Console cleared.';
+    document.getElementById('c-cur').style.display = 'none';
+    // Update code labels
+    document.getElementById('c-start').innerText = document.getElementById('fstart').value;
+    document.getElementById('c-stop').innerText = document.getElementById('fstop').value;
+    document.getElementById('c-step').innerText = document.getElementById('fstep').value;
+  }
+</script>
